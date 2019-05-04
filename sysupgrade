@@ -5,16 +5,18 @@ set -eu
 trap cleanup 2
 
 MNT_POINT=/mnt
+BE_NAME=$(date "+%Y-%m-%d-%H-%M")
+JOB_NUMBER=7
 
 create_be(){
     echo "==> creating boot environment"
-    bectl create test ||
+    bectl create ${BE_NAME} ||
         { echo "could not create boot environment" ; exit 1 ;}
 }
 
 mount_be(){
     echo "==> mounting boot environment"
-    bectl mount test ${MNT_POINT} ||
+    bectl mount ${BE_NAME} ${MNT_POINT} ||
         { echo "could not mount boot environment" ; exit 1 ;}
     mount -t devfs devfs ${MNT_POINT}/dev ||
         { echo "could not mount devfs" ; exit 1 ;}
@@ -24,13 +26,13 @@ umount_be(){
     echo "==> umounting boot environment"
     umount ${MNT_POINT}/dev ||
         { echo "could not umount devfs" ; exit 1 ;}
-    bectl umount test ||
+    bectl umount ${BE_NAME} ||
         { echo "could not umount boot environment" ; exit 1 ;}
 }
 
 destroy_be(){
     echo "==> destroying boot environment"
-    bectl destroy -o test ||
+    bectl destroy -o ${BE_NAME} ||
        { echo "could not destroy boot environment" ; exit 1 ;}
 }
 
@@ -38,20 +40,37 @@ create_script(){
     cat << EOT > ${MNT_POINT}/script.sh
 # !/bin/sh
 
+echo "removing /usr/obj... this may take a while"
 rm -rf /usr/obj ||
         { echo "coud not remove /usr/obj" ; exit 1 ;}
+
 cd /usr/src ||
         { echo "couldn't reach /usr/src" ; exit 1 ;}
+
+echo "updating source tree"
+
 make update SVN_UPDATE=yes ||
         { echo "couldn't update src" ; exit 1 ;}
-make -j7 buildworld ||
+
+echo "building world"
+make -j${JOB_NUMBER} buildworld ||
         { echo "buildworld failed" ; exit 1 ;}
-make -j7 kernel ||
+
+echo "building and installing kernel"
+make -j${JOB_NUMBER} kernel ||
         { echo "kernel failed" ; exit 1 ;}
+
+echo "intalling world"
 make installworld ||
         { echo "installworld failed" ; exit 1 ;}
+
+echo "merging files"
 mergemaster -Ui
+
+echo "checking old"
 make check-old
+
+echo "removing install script"
 rm /script.sh || 
         { echo "install script could not be removed" ; exit 1 ;}
 EOT
