@@ -1,0 +1,79 @@
+# !/bin/sh
+
+set -eu
+
+trap cleanup 2
+
+MNT_POINT=/mnt
+
+create_be(){
+    echo "==> creating boot environment"
+    bectl create test ||
+        { echo "could not create boot environment" ; exit 1 ;}
+}
+
+mount_be(){
+    echo "==> mounting boot environment"
+    bectl mount test ${MNT_POINT} ||
+        { echo "could not mount boot environment" ; exit 1 ;}
+    mount -t devfs devfs ${MNT_POINT}/dev ||
+        { echo "could not mount devfs" ; exit 1 ;}
+}
+
+umount_be(){
+    echo "==> umounting boot environment"
+    umount ${MNT_POINT}/dev ||
+        { echo "could not umount devfs" ; exit 1 ;}
+    bectl umount test ||
+        { echo "could not umount boot environment" ; exit 1 ;}
+}
+
+destroy_be(){
+    echo "==> destroying boot environment"
+    bectl destroy -o test ||
+       { echo "could not destroy boot environment" ; exit 1 ;}
+}
+
+create_script(){
+    cat << EOT > ${MNT_POINT}/script.sh
+# !/bin/sh
+
+rm -rf /usr/obj ||
+        { echo "coud not remove /usr/obj" ; exit 1 ;}
+cd /usr/src ||
+        { echo "couldn't reach /usr/src" ; exit 1 ;}
+make update SVN_UPDATE=yes ||
+        { echo "couldn't update src" ; exit 1 ;}
+make -j7 buildworld ||
+        { echo "buildworld failed" ; exit 1 ;}
+make -j7 kernel ||
+        { echo "kernel failed" ; exit 1 ;}
+make installworld ||
+        { echo "installworld failed" ; exit 1 ;}
+mergemaster -Ui
+make check-old
+rm /script.sh || 
+        { echo "install script could not be removed" ; exit 1 ;}
+EOT
+    return 0
+}
+
+chroot_exec(){
+    echo "==> chrooting"
+    chroot ${MNT_POINT} /bin/sh script.sh
+}
+
+cleanup(){
+    echo "==> cleaning"
+    umount_be
+    destroy_be
+}
+
+upgrade(){
+    create_be
+    mount_be
+    create_script
+    chroot_exec
+}
+
+upgrade
