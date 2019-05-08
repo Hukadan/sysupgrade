@@ -4,10 +4,13 @@ set -eu
 
 trap cleanup 2
 
-MNT_POINT=/mnt
-REVISION=$(svn info --show-item revision /usr/src)
-DATE=$(date "+%Y-%m-%d-%H-%M")
-BE_NAME=${DATE}-${REVISION}
+MNT_POINT=$(mktemp -d /tmp/sysupgrade-XXXXXX) ||
+    { echo "could not create mount point" ; exit 1 ;}
+REVISION=$(svn info --show-item revision /usr/src) ||
+    { echo "could not get revision number" ; exit 1 ;}
+RELEASE=$(uname -r) ||
+    { echo "could not get release" ; exit 1 ;}
+BE_NAME=${RELEASE}-${REVISION}
 JOB_NUMBER=7
 
 create_be(){
@@ -34,6 +37,8 @@ umount_be(){
         { echo "could not umount /usr/src" ; exit 1 ;}
     bectl umount ${BE_NAME} ||
         { echo "could not umount boot environment" ; exit 1 ;}
+    rmdir ${MNT_POINT} ||
+        { echo "could not delete mount point" ; exit 1 ;}
 }
 
 destroy_be(){
