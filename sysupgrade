@@ -5,7 +5,9 @@ set -eu
 trap cleanup 2
 
 MNT_POINT=/mnt
-BE_NAME=$(date "+%Y-%m-%d-%H-%M")
+REVISION=$(svn info --show-item revision /usr/src)
+DATE=$(date "+%Y-%m-%d-%H-%M")
+BE_NAME=${DATE}-${REVISION}
 JOB_NUMBER=7
 
 create_be(){
@@ -20,12 +22,16 @@ mount_be(){
         { echo "could not mount boot environment" ; exit 1 ;}
     mount -t devfs devfs ${MNT_POINT}/dev ||
         { echo "could not mount devfs" ; exit 1 ;}
+    mount_nullfs /usr/src ${MNT_POINT}/usr/src ||
+        { echo "could not mount /usr/src" ; exit 1 ;}
 }
 
 umount_be(){
     echo "==> umounting boot environment"
     umount ${MNT_POINT}/dev ||
         { echo "could not umount devfs" ; exit 1 ;}
+    umount ${MNT_POINT}/usr/src ||
+        { echo "could not umount /usr/src" ; exit 1 ;}
     bectl umount ${BE_NAME} ||
         { echo "could not umount boot environment" ; exit 1 ;}
 }
@@ -43,33 +49,25 @@ create_script(){
 echo "removing /usr/obj... this may take a while"
 rm -rf /usr/obj ||
         { echo "coud not remove /usr/obj" ; exit 1 ;}
-
 cd /usr/src ||
         { echo "couldn't reach /usr/src" ; exit 1 ;}
-
-echo "updating source tree"
-
-make update SVN_UPDATE=yes ||
-        { echo "couldn't update src" ; exit 1 ;}
-
 echo "building world"
 make -j${JOB_NUMBER} buildworld ||
         { echo "buildworld failed" ; exit 1 ;}
-
 echo "building and installing kernel"
 make -j${JOB_NUMBER} kernel ||
         { echo "kernel failed" ; exit 1 ;}
-
 echo "intalling world"
 make installworld ||
         { echo "installworld failed" ; exit 1 ;}
-
 echo "merging files"
 mergemaster -Ui
-
 echo "checking old"
 make check-old
-
+echo "deleting old"
+make delete-old
+echo "delete old libs"
+make delete-old-libs
 echo "removing install script"
 rm /script.sh || 
         { echo "install script could not be removed" ; exit 1 ;}
@@ -93,6 +91,7 @@ upgrade(){
     mount_be
     create_script
     chroot_exec
+    umount_be
 }
 
 upgrade
